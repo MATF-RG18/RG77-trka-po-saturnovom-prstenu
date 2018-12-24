@@ -115,7 +115,7 @@ void on_display(void) {
         
         
         glPushMatrix();
-        glTranslatef(translation_left_right,0,translation_back_front);
+        glTranslatef(translation_left_right,0,0);
         glTranslatef(0.95,0.07,1.1);
         glScalef(0.08,0.1,0.08);
         glColor3f(0,0.7,0);
