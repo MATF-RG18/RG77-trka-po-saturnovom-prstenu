@@ -364,7 +364,7 @@ void on_keyboard(unsigned char key, int x, int y) {
         case 'r':
         case 'R':
             if (animation_ongoing == 3) {
-                /* TODO CHECK! */
+                
                 jump_flag = 0;
                 translation_up = 0;
                 rotation_angle=0;
