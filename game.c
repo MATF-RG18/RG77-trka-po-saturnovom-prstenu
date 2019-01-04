@@ -4,60 +4,83 @@
 #include <stdlib.h>
 #include <math.h>
 #include <time.h>
-#include <stdio.h>
 #include <string.h>
+
+#include "image.h"
 
 #define PI (3.14159265359)
 #define MAX_NUM_OF_STARS (50)
-#define TIMER_INTERVAL_ON_START (50)
+#define TIMER_INTERVAL_ON_START (30)
 #define TIMER_MINIMAL_INTERVAL (15)
 
+#define STATE_UP (1)
+#define STATE_DOWN (0)
+
+#define FILENAME0 "texture.bmp"
+#define FILENAME1 "1.bmp"
+#define FILENAME2 "2.bmp"
+#define FILENAME3 "3.bmp"
+#define FILENAME4 "4.bmp"
+#define FILENAME5 "1.bmp"
+
+static int jump_state = 0;
+static GLuint names[6];
+
 /* Deklaracija funkcija za obradu događaja. */
-void on_reshape(int width, int height);
-void on_display(void);
-void on_keyboard(unsigned char key, int x, int y);
-void on_timer(int value);
-void on_timer_main(int value);
+static void on_reshape(int width, int height);
+static void on_display(void);
+static void on_keyboard(unsigned char key, int x, int y);
+
+static void on_timer(int value);
+static void on_timer_main(int value);
+static void on_timer_jump(int value);
 
 /* Funkcija za iscrtavanje pomoćnih osa. */
-void draw_axes();
+static void draw_axes(void);
 
-/* Funkcije za iscrtavanje objekata na sceni (zvezde, planete, karaktera i prepreka). */
-void draw_ring(float in_radius, float out_radius, int precision);
+/* Funkcije za iscrtavanje objekata na sceni (Zvezda, planeta, karaktera i prepreka). */
+static void draw_ring(float in_radius, float out_radius, int precision);
 
-void draw_Saturn_ring();
-void draw_Saturn_sphere();
-void draw_Spaceman();
+static void draw_Saturn_ring(void);
+static void draw_Saturn_sphere(void);
+static void draw_Spaceman(void);
 
-void draw_barrier(float z_translation);
-void draw_barriers();
+static void draw_barrier(float z_translation);
+static void draw_barriers(void);
 
-void draw_stars();
-void draw_star_vortex();
-void draw_Uran();
+static void draw_stars(void);
+static void draw_star_vortex(void);
+static void draw_Uran(void);
 
 /* Iscrtavanje glavnog menija. */
-void draw_meni();
+static void draw_meni(void);
 
 /* Iscrtavanje pozadine i glavnih elemenata igrice. */
-void draw_backscene();
-void draw_main_objects();
+void draw_backscene(void);
+void draw_main_objects(void);
 
 
 /* Funkcije za generisanje inicijalnih vrednosti.*/
-void generate_barriers();
-void generate_random_stars();
+void generate_barriers(void);
+void generate_random_stars(void);
 
-/* Pomoćne globalne promenjljive. */
+/* Inicijalizacija parametara za postavljanje tekstura. */
+static void initialize(void);
+
+/* Pomoćne globalne promenjljive i strukture. */
 
 /* Ugao rotacije prepreka. */
 static int rotation_angle = 0;
+
+/* Ugao rotacije sfere. */
+static int rotation_angle_sphere = 0;
 
 /* Ugao rotacije prstena oko sfere u početnom meniju. */
 static int main_parametar=0;
 
 /* Parametar translacije glavnog karaktera. */
 static float translation_left_right = 0;
+static float translation_up = 0;
 
 /* Parametar koji označava stanja animacije. 
  * Početno stanje (0) stanje animcije u pokretu (1), stanje pauze (2), završno stanje (3). */
@@ -74,10 +97,10 @@ static int timer_value_main = 1;
 static int position_of_Spaceman=3;
 
 /* Detekcija sudara. */
-void collision_detection();
+static void collision_detection(void);
 
 /* Iscrtavanje niza karaktera. */
-void draw_strings(void* font, char* string, float raster_y);
+static void draw_strings(void* font, char* string, float raster_y);
 
 /* Pomocna funkcija za sortiranje niza. */
 static int compare(const void *p1, const void *p2) {
@@ -86,21 +109,24 @@ static int compare(const void *p1, const void *p2) {
 
 /* Strukture koje opisuju položaj barijere i zvezda. */
 typedef struct {
-    int speedway_position[4];
-    float z_translation[4];
-}Barriers;
+    int speedway_position;
+    float z_translation;
+} Barrier;
 
 typedef struct {
     float x_up, y_up;
     float x_down, y_down;
-}Star;
+} Star;
 
 
-static Barriers barriers;
+static Barrier barriers[5];
 static Star stars_positions[MAX_NUM_OF_STARS];
 
 /* Pomoćni niz za izbacivanje duplikata pri izboru prepreka. */
-static int help[4];
+static int help[5];
+
+/* Pomoćni parametar za skok glavnog karaktera. */
+static int jump_flag = 0;
 
 
 int main(int argc, char** argv) {
@@ -110,10 +136,8 @@ int main(int argc, char** argv) {
     glutInitDisplayMode(GLUT_RGB | GLUT_DOUBLE | GLUT_DEPTH);
     
     /* Kreiranje prozora. */
-    glutInitWindowSize(1000, 600);
-    glutInitWindowPosition(100, 100);
     glutCreateWindow(argv[0]);
-    
+    glutFullScreen();
 
     /* Registracija funkcija za obradu događaja. */
     glutDisplayFunc(on_display);
@@ -123,14 +147,17 @@ int main(int argc, char** argv) {
     /* OpenGL Inicijalizacija. */
     glClearColor(0, 0, 0, 0);
     glEnable(GL_DEPTH_TEST);
+    
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);  
 
-    
     /* Generisanje inicijanih vrednosti. */
     generate_barriers();
     generate_random_stars();
     
+    /* Inicijalizacija parametara za postavljanje teksture i učitavanje tekstura. */
+    initialize();
+
     /* Ulazi se u glavnu petlju. */
     glutMainLoop();
     
@@ -179,16 +206,30 @@ void on_display(void) {
             draw_meni();
             glPopMatrix();
             draw_strings(GLUT_BITMAP_TIMES_ROMAN_24, "      Welcome to Saturn! ", 0.3);
-            draw_strings(GLUT_BITMAP_TIMES_ROMAN_24, " Press 'G' or 'g' to start.", -0.2);
-            draw_strings(GLUT_BITMAP_TIMES_ROMAN_24, " Press 'P' or 'p' to pause.", -0.3);
+            draw_strings(GLUT_BITMAP_TIMES_ROMAN_24, " Press 'G' or 'g' to start.", 0);
+            draw_strings(GLUT_BITMAP_TIMES_ROMAN_24, " Press 'P' or 'p' to pause.", -0.1);
             
-            draw_strings(GLUT_BITMAP_TIMES_ROMAN_24, " To move Spaceman left press 'A' or 'a'.", -0.4);
-            draw_strings(GLUT_BITMAP_TIMES_ROMAN_24, " To move Spaceman right press 'D' or 'd'.", -0.5);
+            draw_strings(GLUT_BITMAP_TIMES_ROMAN_24, " To move Spaceman left press 'A' or 'a'.", -0.2);
+            draw_strings(GLUT_BITMAP_TIMES_ROMAN_24, " To move Spaceman right press 'D' or 'd'.", -0.3);
+            draw_strings(GLUT_BITMAP_TIMES_ROMAN_24, " To make Spaceman jump press space.", -0.4);
+            draw_strings(GLUT_BITMAP_TIMES_ROMAN_24, " To exit game press escape.", -0.5);
+            
             draw_strings(GLUT_BITMAP_TIMES_ROMAN_24, " Have fun :)", -0.6);
             
             break;
-        case 1: 
+        case 1:
+            draw_backscene();
+            draw_main_objects();
+            collision_detection();
+            break;
         case 2:
+            draw_backscene();
+            draw_main_objects();
+            collision_detection();
+            glColor3f(1,1,1);
+            draw_strings(GLUT_BITMAP_TIMES_ROMAN_24,"         GAME PAUSED         ", 0.3);
+            draw_strings(GLUT_BITMAP_TIMES_ROMAN_24,"  Press 'G' or 'g' to resume.  ", 0.2);
+            break;
         case 3:
         /* Animacija u pokretu, pauzi ili na završetku: Iscrtavanje scene, main objekata i poruke. */
             draw_backscene();
@@ -202,7 +243,19 @@ void on_display(void) {
 /* Iscrtavanje barijera i transliranje po stazama. */
 void draw_barrier(float z_translation) {
     glPushMatrix();
-        glColor3f(0.2,0.3,0.4);
+        
+    /* Uključivanje osvetljenja za prepreke. */
+    GLfloat light_ambient[] = { 0.2, 0.2, 0.2, 1 };
+    GLfloat light_diffuse[] = { 0.7, 0.7, 0.7, 1 };
+    GLfloat light_specular[] = { 0.9, 0.9, 0.9, 1 };
+
+    glEnable(GL_LIGHTING);
+    glEnable(GL_LIGHT0);
+    glLightfv(GL_LIGHT0, GL_AMBIENT, light_ambient);
+    glLightfv(GL_LIGHT0, GL_DIFFUSE, light_diffuse);
+    glLightfv(GL_LIGHT0, GL_SPECULAR, light_specular);
+    
+    glColor3f(0.2,0.2,0.2);
         
         /* Rotacija prepreka oko y ose.*/
         glRotatef(-rotation_angle, 0, 1, 0);
@@ -212,24 +265,17 @@ void draw_barrier(float z_translation) {
         
         /* Iscrtavanje prepreka.*/
         glutSolidCube(0.1);
+    
+    glDisable(GL_LIGHT0);    
+    glDisable(GL_LIGHTING);
     glPopMatrix();
 }
 
 /* Iscrtavanje prstena. */
 void draw_ring(float in_radius, float out_radius, int precision) {
-    glBegin(GL_QUAD_STRIP);
-    int i;
-    for( i = 0; i <= precision; ++i )
-    {
-        float angle;
-        /* Trazimo uglove za iscrtavanje tacaka [0, 2PI] */
-        angle=2 * PI * ((i * 1.0) / precision);
-        
-        /* Iscrtavaju se grupisani poligoni. [GL_QUAD_STRIP]*/
-        glVertex2f( in_radius * cos(angle), in_radius * sin(angle));
-        glVertex2f( out_radius * cos(angle), out_radius * sin(angle));
-    }
-    glEnd();
+    GLUquadric* disk = gluNewQuadric();
+    gluQuadricTexture(disk, GL_TRUE);
+    gluDisk(disk, (GLdouble) in_radius , (GLdouble) out_radius, (GLint) precision, (GLint) precision);        
 }
 
 /* Obrada događaja on on_reshape. */
@@ -273,44 +319,70 @@ void on_keyboard(unsigned char key, int x, int y) {
             break;
             
             
-        /* Karakter se translira ako je animacija u pokretu. */
+        /* Karakter se translira levo ili desno ako je animacija u pokretu. */
+        /* Translacija u stazu levo. */
         case 'a':
         case 'A':
             if (translation_left_right>-0.2 && animation_ongoing != 2 && animation_ongoing == 1) {
-                translation_left_right -= 0.1;
-                /* Karakter se pomera u stazu levo.*/
-                position_of_Spaceman-=1;
-                glutPostRedisplay();
+                
+                /* Karakter se pomera ako nije u stanju skoka. */
+                if (jump_flag == 0) {
+                    translation_left_right -= 0.1;
+                    
+                    /* Karakter se pomera u stazu levo.*/
+                    position_of_Spaceman-=1;
+                    glutPostRedisplay();
+                }
             }
             break;
+            
+        /* Translacija u stazu desno. */
         case 'd':
         case 'D':
             if (translation_left_right<0.2 && animation_ongoing != 2 && animation_ongoing == 1) {
-                translation_left_right += 0.1;
-                /* Karakter se pomera u stazu desno.*/
-                position_of_Spaceman+=1;
-                glutPostRedisplay();
+                
+                /* Karakter se pomera ako nije u stanju skoka. */
+                if (jump_flag == 0) {
+                    translation_left_right += 0.1;
+                    /* Karakter se pomera u stazu desno.*/
+                    position_of_Spaceman+=1;
+                    glutPostRedisplay();
+                }
             }
             break;
+            
             
         /* Animacija u pokretu se prebacuje u stanje pauze. */
         case 'p':
         case 'P':
-            if (animation_ongoing == 1)
+            if (animation_ongoing == 1) {
                 animation_ongoing=2;
+            }
             break;
             
-        /* Animacija se restatruje. */
+        /* Animacija se restartuje. */
         case 'r':
         case 'R':
             if (animation_ongoing == 3) {
-                animation_ongoing=0;
+                /* TODO CHECK! */
+                jump_flag = 0;
+                translation_up = 0;
                 rotation_angle=0;
                 timer_interval=TIMER_INTERVAL_ON_START;
+                animation_ongoing=0;
                 glutPostRedisplay();
             }
             break;
-    }
+            
+        case ' ':
+            if (animation_ongoing == 1) {
+                if (jump_flag != 1) {
+                    jump_flag = 1;
+                    jump_state = STATE_UP;
+                    glutTimerFunc(10, on_timer_jump, 3);
+                }
+            }
+        }
 }
 
 /* Iscrtavanje Saturnovog prstena. */
@@ -322,35 +394,53 @@ void draw_Saturn_ring() {
         int num_of_speedways = 5;
     
         float inner = 0.8, outer = 0.9;
-        float color_rgb = 0.5;
     
         /* Iscrtavanje 5 spojenih kružnih prstena. */
         for (i=0; i<num_of_speedways; i++) {
-            glColor3f(color_rgb + 0.1*i,color_rgb + 0.1*i, color_rgb + 0.1*i);
-            draw_ring(inner + 0.1*i, outer + 0.1*i, 100);
+            
+            glBindTexture(GL_TEXTURE_2D, names[i+1]);
+            glEnable(GL_TEXTURE_2D);
+            
+             draw_ring(inner + 0.1*i, outer + 0.1*i, 100);
+        
+            glBindTexture(GL_TEXTURE_2D, 0);
+            glDisable(GL_TEXTURE_2D);
         }
     glPopMatrix();
 }
 
+
 /* Iscrtavanje planete. */
 void draw_Saturn_sphere() {
-     glPushMatrix();
-     
-        glColor3f(106.0/255,42.0/255,14.0/255);
-        glRotatef(90, 1,0,0);
-        glutSolidSphere(0.7,50,50);
+    
+    glPushMatrix();
+    
+        glBindTexture(GL_TEXTURE_2D, names[0]);
+        glEnable(GL_TEXTURE_2D);
+            
+        GLUquadric* sphere = gluNewQuadric();
+        gluQuadricTexture(sphere, GL_TRUE);
         
+        glRotatef(90,1,0,0);
+        gluSphere(sphere, (GLdouble) 0.7, (GLint) 50, (GLint) 50);        
+
+        glBindTexture(GL_TEXTURE_2D, 0);
+        glDisable(GL_TEXTURE_2D);
+
     glPopMatrix();
+    
 }
 
 /* Iscrtavanje glavnog karaktera. */
 void draw_Spaceman() {
  
     glPushMatrix();
+        glColor3f(0.1,0.5,0.4);
         glutSolidSphere(0.6, 50, 50);
     glPopMatrix();
 
-    glColor3f(0,0.3,0);
+    glColor3f((float)rand()/RAND_MAX,(float)rand()/RAND_MAX,(float)rand()/RAND_MAX);
+   
     glPushMatrix();
         glTranslatef(-0.25,0.4,0);
         glPushMatrix();
@@ -367,35 +457,6 @@ void draw_Spaceman() {
             glPopMatrix();
         glPopMatrix();
     glPopMatrix();
-}
-
-
-/* Obrada funkcije tajmera. */
-void on_timer(int value) {
-    if (value != timer_value) 
-        return; 
-    
-    /* Ugao se povećava do 180 stepeni. */
-    if (rotation_angle<180) {
-        rotation_angle += 2;
-        glutPostRedisplay();
-    }
-    /* Ugao se restatruje i generišu se nove prepreke. */
-    else {
-        rotation_angle=0;    
-        generate_barriers();
-        /* Interval pozivanja tajmera se smanjuje do minimalne definisane vrednosti,  
-         * što dovodi do ubrzavanja rotacije prepreka dok se ne dostigne ta minimalna vrednost, 
-         * nakon toga brzina rotacije ostaje ista. */
-        if (timer_interval>TIMER_MINIMAL_INTERVAL) {
-            timer_interval -= 5;
-        }
-    }
-        
-    
-    /* Nastavljanje animacije. */
-    if (animation_ongoing == 1)
-            glutTimerFunc(timer_interval, on_timer, timer_value);
     
 }
 
@@ -405,27 +466,26 @@ void generate_barriers() {
     srand(time(NULL));
     
     /* Generisanje 4 random broja i smestanje u pomocni niz. */
-    for (i=0; i<4; i++) {
+    for (i=0; i<5; i++) {
         help[i] = (rand() % 5)+1;
     }
 
     /* Sortiranje niza zbog lakseg izbacivanja duplikata i izbegavanja suvisnog iscrtavanja prepreka. */
-    qsort(help, 4, sizeof(int), compare);
+    qsort(help, 5, sizeof(int), compare);
     
     /* Zapis jedinstvenih polozaja u stazama i parametra translacije po z osi. */
-    for (i=0; i<3; i++) {
+    for (i=0; i<4; i++) {
         if (help[i]<help[i+1]) {
-            barriers.speedway_position[i]=help[i];
-            barriers.z_translation[i]=(help[i]-1)/10.0;
+            barriers[i].speedway_position=help[i];
+            barriers[i].z_translation=(help[i]-1)/10.0;
         } else {
-            barriers.speedway_position[i]=0;
-            barriers.z_translation[i]=0;
+            barriers[i].speedway_position=0;
+            barriers[i].z_translation=0;
         }
     }
     
-    barriers.speedway_position[3]=help[3];
-    barriers.z_translation[i]=(help[3]-1)/10.0;
-    
+    barriers[4].speedway_position=help[4];
+    barriers[4].z_translation=(help[4]-1)/10.0;
 }
 
 /* Iscrtavanje prepreka. */
@@ -435,11 +495,12 @@ void draw_barriers() {
     /* Ako je funkcija koja generise slucajne polozaje oznacila staze iscrtavanja
     * sledi iscrtavanje tih prepreka. (Staze su numerisane brojevima od 1 do 5)*/
        
-    for (i=0; i<4; i++) 
-        if (barriers.speedway_position[i] != 0)
-            draw_barrier(barriers.z_translation[i]);
+    for (i=0; i<5; i++) 
+        if (barriers[i].speedway_position != 0)
+            draw_barrier(barriers[i].z_translation);
     
 }
+
 /* Inicijalizacija položaja zvezda. */
 void generate_random_stars() {
     srand(time(NULL));
@@ -491,12 +552,14 @@ void draw_backscene() {
 
 /* Iscrtavanje glavnih objekata na sceni.*/
 void draw_main_objects() {
+    
     glPushMatrix();
     
         glRotatef(10,1,0,0);
         glTranslatef(-0.70,-0.1,0.33);
         
         glPushMatrix();
+        glRotatef(-rotation_angle_sphere,0,1,0);
         draw_Saturn_sphere();
         glPopMatrix();
         
@@ -514,8 +577,8 @@ void draw_main_objects() {
         
         
         glPushMatrix();
-        glTranslatef(translation_left_right,0,0);
-        glTranslatef(0.95,0.07,1.1);
+        glTranslatef(translation_left_right, translation_up, 0);
+        glTranslatef(0.94,0.07,1.2);
         glScalef(0.07,0.1,0.08);
         glColor3f(0,0.7,0);
         draw_Spaceman();
@@ -525,38 +588,52 @@ void draw_main_objects() {
 
 }
 
+
+/* Detekcija sudara. */
 void collision_detection() {
     int i;
     int danger_zone_parametar=0;
-    /* Rotation_angle = 114 -> Sudar na prvoj stazi, 
-     * Rotation_angle = 112 -> Sudar na drugoj stazi... 
-     * 110 108 106 */
-    for (i=0; i<4; i++)  {
-            if (barriers.speedway_position[i] != 0) {
-                if (rotation_angle==(114-danger_zone_parametar) && barriers.speedway_position[i]==position_of_Spaceman) {
-                    
-                    animation_ongoing=3;
-                }
+    for (i=0; i<5; i++)  {
+            switch (barriers[i].speedway_position) {
+                case 1:
+                    danger_zone_parametar = 0;
+                    break;
+                case 2:
+                    danger_zone_parametar = 2;
+                    break;
+                case 3:
+                    danger_zone_parametar = 4;
+                    break;
+                case 4:
+                    danger_zone_parametar = 6;
+                    break;
+                case 5:
+                    danger_zone_parametar = 8;
+                    break;
             }
-        danger_zone_parametar+=2;
-    }
+                
+            if (rotation_angle==(116-danger_zone_parametar) && barriers[i].speedway_position==position_of_Spaceman && translation_up==0)    {
+                jump_flag = 0;
+                translation_up = 0;
+                animation_ongoing=3;
+            }
+        }           
     
     /* Ispisivanje poruke pri završetku animacije. */
     if (animation_ongoing == 3) {
         glColor3f(1,1,1);
-        draw_strings(GLUT_BITMAP_TIMES_ROMAN_24,"                   EXIT         ", 0.4);
-        draw_strings(GLUT_BITMAP_TIMES_ROMAN_24,"If you want to play again press 'R' or 'r'. ", 0.3);
-        draw_strings(GLUT_BITMAP_TIMES_ROMAN_24,"If yuu want to quit press 'esc'. ", 0.2);
-        
+        draw_strings(GLUT_BITMAP_TIMES_ROMAN_24,"            GAME OVER          ", 0.3);
+        draw_strings(GLUT_BITMAP_TIMES_ROMAN_24,"Press 'R' or 'r' to play again.", 0.2);
     }
 
 }
 
 /* Iscrtavanje početnog menija. */
 void draw_meni() {
+    
+    glutTimerFunc(timer_interval, on_timer_main, timer_value_main);
+    
     glPushMatrix();
-        glutTimerFunc(timer_interval, on_timer_main, timer_value_main);
-        
         glPushMatrix();
         draw_stars();
         glTranslatef(1,0,0);
@@ -564,21 +641,99 @@ void draw_meni() {
         glPopMatrix();
         
         glPushMatrix();
+            
             glTranslatef(-0.5,0.2,0);
-            glScalef(0.5,0.5,0.5);
+            glScalef(0.4,0.4,0.4);
+            glPushMatrix();
+            glRotatef(-rotation_angle_sphere, 0,1,0);
             draw_Saturn_sphere();
-            glRotatef(main_parametar,0,1,0);
-            glRotatef(15,1,0,1);
+            
+            glPushMatrix();
+            glRotatef(10,1,0,0);
             draw_Saturn_ring();
+            glPopMatrix();
         glPopMatrix();
     glPopMatrix();
+
 }
 
+/* Obrada funkcije tajmera za obradu rotacije prepreka. */
+void on_timer(int value) {
+    
+    if (value != timer_value) 
+        return; 
+    
+    /* Ugao se povećava do 180 stepeni. */
+    if (rotation_angle<180) {
+        rotation_angle += 2;
+        glutPostRedisplay();
+    }
+    /* Ugao se restatruje i generišu se nove prepreke. */
+    else {
+        rotation_angle=0;    
+        generate_barriers();
+        /* Interval pozivanja tajmera se smanjuje do minimalne definisane vrednosti,  
+         * što dovodi do ubrzavanja rotacije prepreka dok se ne dostigne ta minimalna vrednost, 
+         * nakon toga brzina rotacije ostaje ista. */
+        if (timer_interval>TIMER_MINIMAL_INTERVAL) {
+            timer_interval -= 5;
+        }
+    }
+    
+    /* Nastavljanje animacije. */
+    if (animation_ongoing == 1)
+            glutTimerFunc(timer_interval, on_timer, timer_value);
+    
+}
 
-/* Obrada main tajmera. */
+/* Obrada funkcije main tajmera za rotaciju Saturna. */
 void on_timer_main(int value) {
-    main_parametar+=5;
+    if (animation_ongoing == 0) {
+        rotation_angle_sphere+=2;
+        main_parametar+=10;
+    }
+    
     glutPostRedisplay();
+}
+
+/* Obrada funkcije jump tajmera za skok glavnog karaktera. */
+
+
+void on_timer_jump(int value) {
+    
+    /* Ako je animacija pokrenuta i stanje skoka postavljeno na STATE_UP 
+     * glavni karakter se translira pozitivnom vrednošću po y osi. */
+    if (animation_ongoing == 1) {
+    
+        /* Ako je animacija pokrenuta i stanje skoka postavljeno na STATE_UP 
+         * glavni karakter se translira pozitivnom vrednošću po y osi. */
+        if (translation_up < 0.3 && jump_state == STATE_UP) {
+            translation_up += 0.02;
+        } 
+        /* Inače se stanje postavlja na STATE_DOWN koje je okidač za promenu smera translacije glavnog karaktera. */
+        else if (translation_up >= 0.3) {
+                jump_state = STATE_DOWN;
+            }
+        
+        /* Ako je animacija pokrenuta i stanje skoka postavljeno na STATE_DOWN 
+         * glavni karakter se translira negativnom vrednošću po y osi sve dok se ne vrati u početno stanje. */
+        if (jump_state == STATE_DOWN && translation_up > 0)
+            translation_up -= 0.015;
+        
+        /* Ako karakter vraćen u početno stanje, restartuju se parametri skoka. */
+        if (translation_up <= 0) {
+            jump_flag = 0;
+            translation_up = 0;
+        }
+    }
+    
+    /* Ako smo u stanju skoka, nastavljamo sa animacijom. */
+    if (jump_flag == 1) {
+        glutTimerFunc(10,on_timer_jump, 3);
+    }
+    
+    
+        glutPostRedisplay();    
 }
 
 
@@ -594,10 +749,122 @@ void draw_strings(void* font, char* string, float raster_y) {
 }
 
 
+/* Iscrtavanje Urana. */
 void draw_Uran() {
     glPushMatrix();
     glTranslatef(2,1,-3);
-    glColor4f(0.2,0.2,0.8,0.5);
+    glColor4f(0.2,0.2,0.8,0.3);
     glutSolidSphere(0.1,50,50);
     glPopMatrix();
 }
+
+/* Inicijalizacija parametara za postavljanje tekstura. */
+static void initialize(void)
+{
+    /* Deklaracija teskture učitane iz fajla. */
+    Image * image;
+
+    /* Uključuju se teksture. */
+    glEnable(GL_TEXTURE_2D);
+    glTexEnvf(GL_TEXTURE_ENV,
+              GL_TEXTURE_ENV_MODE,
+              GL_REPLACE);
+
+    /* Inicijalizuje se promenljiva image koji ce sadrzati teksture ucitane iz fajlova. */
+    image = image_init(0, 0);
+
+    /* Kreira se prva tekstura. */
+    /* Generisu se identifikatori tekstura. */
+    glGenTextures(6, names);
+
+    image_read(image, FILENAME0);
+
+    glBindTexture(GL_TEXTURE_2D, names[0]);
+    glTexParameteri(GL_TEXTURE_2D,
+                    GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D,
+                    GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB,
+                 image->width, image->height, 0,
+                 GL_RGB, GL_UNSIGNED_BYTE, image->pixels);
+
+    image_read(image, FILENAME1);
+
+    glBindTexture(GL_TEXTURE_2D, names[1]);
+    glTexParameteri(GL_TEXTURE_2D,
+                    GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D,
+                    GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB,
+                 image->width, image->height, 0,
+                 GL_RGB, GL_UNSIGNED_BYTE, image->pixels);
+
+    
+    image_read(image, FILENAME2);
+
+    glBindTexture(GL_TEXTURE_2D, names[2]);
+    glTexParameteri(GL_TEXTURE_2D,
+                    GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D,
+                    GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB,
+                 image->width, image->height, 0,
+                 GL_RGB, GL_UNSIGNED_BYTE, image->pixels);
+
+    
+    image_read(image, FILENAME3);
+
+    glBindTexture(GL_TEXTURE_2D, names[3]);
+    glTexParameteri(GL_TEXTURE_2D,
+                    GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D,
+                    GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB,
+                 image->width, image->height, 0,
+                 GL_RGB, GL_UNSIGNED_BYTE, image->pixels);
+
+    
+    image_read(image, FILENAME4);
+
+    glBindTexture(GL_TEXTURE_2D, names[4]);
+    glTexParameteri(GL_TEXTURE_2D,
+                    GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D,
+                    GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB,
+                 image->width, image->height, 0,
+                 GL_RGB, GL_UNSIGNED_BYTE, image->pixels);
+
+    
+    image_read(image, FILENAME5);
+
+    glBindTexture(GL_TEXTURE_2D, names[5]);
+    glTexParameteri(GL_TEXTURE_2D,
+                    GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D,
+                    GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB,
+                 image->width, image->height, 0,
+                 GL_RGB, GL_UNSIGNED_BYTE, image->pixels);
+
+    
+    
+    /* Iskljucujemo aktivnu teksturu */
+    glBindTexture(GL_TEXTURE_2D, 0);
+
+    /* Unistava se objekat za citanje tekstura iz fajla. */
+    image_done(image);
+}
+
