@@ -35,8 +35,8 @@ static void on_timer(int value);
 static void on_timer_main(int value);
 static void on_timer_jump(int value);
 
-/* Funkcija za iscrtavanje pomoćnih osa. */
-static void draw_axes(void);
+/* Funkcija za iscrtavanje pomoćnih osa. 
+static void draw_axes(void); */
 
 /* Funkcije za iscrtavanje objekata na sceni (Zvezda, planeta, karaktera i prepreka). */
 static void draw_ring(float in_radius, float out_radius, int precision);
@@ -164,7 +164,7 @@ int main(int argc, char** argv) {
     return 0;
 }
 
-/* Pomoćna funkcija za iscrtavanje koordinatnih osa. */
+/* Pomoćna funkcija za iscrtavanje koordinatnih osa. 
 void draw_axes()
 {
 glBegin( GL_LINES );
@@ -184,7 +184,7 @@ glColor3f( 0.0, 1.0, 0.0);
 glVertex3f( 0.0, 0.0, -50.0);
 glVertex3f( 0.0, 0.0, 50.0);
 glEnd();
-}
+}*/
 
 /* Obrada događaja on on_display. */
 void on_display(void) {

@@ -11,14 +11,8 @@ image.o: image.c
 	$(CC) -c image.c
 	
 
-.PHONY: beauty clean dist
-
-beauty:
-	-indent -nut -kr main.c
-	-rm *~ *BAK
+.PHONY: clean 
 
 clean:
 	-rm *.o $(PROGRAM) 
 
-dist: clean
-	-tar -chvj -C .. -f ../$(PROGRAM).tar.bz2 $(PROGRAM)
