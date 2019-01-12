@@ -3,8 +3,8 @@
 ## Zdravo!
 ## Dobro došli na trku po Saturnovom prstenu.
 
-### Kratki opis:
-Svemirko je u svojoj ekspediciji po Svemiru prišao previše blizu planeti Saturn i zbog uticaja njene gravitacije ostao zaglavljen na njenom prstenu. Pomozite mu da opstane među njegovim nemirnim asteroidima. Srećno!  
+### Kratak opis:
+Svemirko je u svojoj ekspediciji po Svemiru prišao previše blizu planeti Saturn i zbog uticaja gravitacije ostao zaglavljen na njegovom prstenu. Pomozite mu da opstane među njegovim nemirnim asteroidima. Srećno!  
 
 ### Kontrole:
 * A(a), D(d) za pomeranje Spacemana
