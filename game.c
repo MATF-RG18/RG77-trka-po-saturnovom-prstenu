@@ -6,6 +6,7 @@
 #include <time.h>
 #include <string.h>
 #include <stdio.h>
+#include <unistd.h>
 
 #include "image.h"
 
@@ -33,6 +34,7 @@
 #define FILENAME4 "4.bmp"
 #define FILENAME5 "1.bmp"
 #define FILENAME6 "uran.bmp"
+#define FILENAME7 "barrier1.bmp"
 
 /* Deklaracija funkcija za obradu događaja. */
 static void on_reshape(int width, int height);
@@ -53,7 +55,7 @@ static void draw_Saturn_ring(void);
 static void draw_Saturn_sphere(void);
 static void draw_Spaceman(void);
 
-static void draw_barrier(float speedway_translation);
+static void draw_barrier(float speedway_translation, int type);
 static void draw_barriers(void);
 
 static void draw_stars(void);
@@ -73,7 +75,7 @@ static void generate_random_stars(void);
 
 /* Inicijalizacija parametara za postavljanje tekstura. */
 static void initialize(void);
-static GLuint names[7];
+static GLuint names[10];
 
 /* Ugao rotacije prepreka. */
 static int rotation_angle = 0;
@@ -109,8 +111,13 @@ static int compare(const void *p1, const void *p2) {
     return (*(int*)p1  - *(int*)p2)>=0;
 }
 
+/* Funkcija koja obrađuje živote.*/
+static void end();
+
 /* Strukture koje opisuju položaj barijere. */
 typedef struct {
+    int type;
+    int texture;
     int speedway_position;
     float speedway_translation;
 } Barrier;
@@ -135,6 +142,11 @@ static int jump_state = 0;
 /* Rezultat. */
 static int score = 0;
 
+/* Inicijana vrednost života. */
+static int life = 3;
+
+
+void drawTorus(double, double, int, int, int);
 
 
 int main(int argc, char** argv) {
@@ -273,8 +285,16 @@ static void on_display(void) {
                 
                 char result[100];
                 sprintf(result, "Score: %d", score/10);
-                output(2000,1400, result);
-                
+                output(2000,1200, result);
+
+                char lifes[15];
+                if (life > 1) {
+                    sprintf(lifes, "You have %d lives! :) ", life);
+                } else {
+                    sprintf(lifes, "Your last chance! :|");
+                }
+                output(1400,1400, lifes);
+
                 glPopMatrix();
             
         break;
@@ -312,8 +332,66 @@ static void on_display(void) {
             glPushMatrix();
             draw_background();
             draw_main_objects();
-            collision_detection();
+            
+            
+            glPushMatrix();
+                glScalef(0.0005,0.0005,0.0005);
+                glLineWidth(5.0);
+                
+                glColor3f(1,1,1);
+                output(100,1200, "GAME OVER      ");
+                glLineWidth(2.5);
+                sprintf(result, "Your score is: %d", score/10);
+                output(100, 800, result);
+                output(100, 600, "Press 'R' or 'r' to play again.");
             glPopMatrix();
+            
+            /* Iscrtava se pravougaonik koji je transparentan. */
+            glPushMatrix();
+                glColor4f(0.2,0.2,0.2,0.3);
+                glTranslatef(0,0,1.7);
+                glBegin(GL_POLYGON);
+                glVertex3f(2, 2, 0);
+                glVertex3f(2, -2, 0);
+                glVertex3f(-2, -2, 0);
+                glVertex3f(-2, 2, 0);
+                glEnd();
+            glPopMatrix();
+            
+            
+            glPopMatrix();
+            break;
+        case 4: 
+        /* Animacija u pauzi, izgubljen zivot. */    
+            
+        glPushMatrix();
+            
+            generate_barriers();
+            /* Parametri se restartuju. */
+            Spaceman_jump = false;
+            translation_up = 0;
+            rotation_angle=0;
+            timer_interval=TIMER_INTERVAL_ON_START;
+                           
+            draw_background();
+            draw_main_objects();
+            collision_detection();
+            
+            glScalef(0.0005,0.0005,0.0005);
+            glColor3f(1,1,1);
+            
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+            glEnable(GL_BLEND);
+            glEnable(GL_LINE_SMOOTH);
+            glLineWidth(5.0);
+            glColor3f(0.9,0.9,0.83);
+            output(-100,1300, "You lost life!");
+            glLineWidth(2.5);
+            output(-100, 1100,"Press 'G' or 'g' to resume.");
+            
+            glPopMatrix();
+                
+                
             break;
     }
     
@@ -321,21 +399,11 @@ static void on_display(void) {
 }
 
 /* Iscrtavanje barijera i transliranje po stazama. */
-static void draw_barrier(float speedway_translation) {
+static void draw_barrier(float speedway_translation, int type) {
     glPushMatrix();
-        
-    /* Uključivanje osvetljenja za prepreke. */
-    GLfloat light_ambient[] = { 0.2, 0.2, 0.2, 1 };
-    GLfloat light_diffuse[] = { 0.7, 0.7, 0.7, 1 };
-    GLfloat light_specular[] = { 0.9, 0.9, 0.9, 1 };
-
-    glEnable(GL_LIGHTING);
-    glEnable(GL_LIGHT0);
-    glLightfv(GL_LIGHT0, GL_AMBIENT, light_ambient);
-    glLightfv(GL_LIGHT0, GL_DIFFUSE, light_diffuse);
-    glLightfv(GL_LIGHT0, GL_SPECULAR, light_specular);
     
-    glColor3f(0.2,0.2,0.2);
+    GLUquadric* sphere = gluNewQuadric();
+    gluQuadricTexture(sphere, GL_TRUE);
         
         /* Rotacija prepreka oko y ose.*/
         glRotatef(-rotation_angle, 0, 1, 0);
@@ -343,11 +411,20 @@ static void draw_barrier(float speedway_translation) {
         /* Postavljanje prepreka na adekvatne staze. */
         glTranslatef(0,0.1/2, -0.8-0.1/2-speedway_translation);
         
-        /* Iscrtavanje prepreka.*/
-        glutSolidCube(0.1);
-    
-    glDisable(GL_LIGHT0);    
-    glDisable(GL_LIGHTING);
+        glBindTexture(GL_TEXTURE_2D, names[7]);
+        glEnable(GL_TEXTURE_2D);
+
+        
+        switch (type) {
+            case 1: gluSphere(sphere, (GLdouble) 0.05, (GLint) 100, (GLint) 100); break;
+                        
+            case 2: glRotatef(-rotation_angle*5, 1, 0, 1); drawTorus(0.009,0.02,16,8,0); break;
+            case 3: glRotatef(-rotation_angle*2, 1, 1, 1); gluCylinder(sphere, (GLdouble) 0.06, (GLdouble) 0.02, (GLdouble) 0.07, (GLint) 100, (GLint) 100); break;
+        }
+        
+        glBindTexture(GL_TEXTURE_2D, 0);
+        glDisable(GL_TEXTURE_2D);
+
     
     glPopMatrix();
 }
@@ -389,7 +466,7 @@ static void on_keyboard(unsigned char key, int x, int y) {
     
     
     /* Parametar animation_ongoing može imati vrednosti 
-     * 0 (Animacija nije pokrenuta), 1 (Animacija je pokrenuta),  2 (Animacija je pauzirana), 3 (Animacija je završena). */
+     * 0 (Animacija nije pokrenuta), 1 (Animacija je pokrenuta),  2 (Animacija je pauzirana), 3 (Animacija je završena), 4 (Animacija pauzirana, izgubljen život). */
     switch(key) {
         case 27: 
             exit(0);
@@ -397,7 +474,7 @@ static void on_keyboard(unsigned char key, int x, int y) {
         case 'g':
         case 'G':            
             /* Animacija se pokreće ako je u početnom stanju ili u stanju pauze. */
-            if (animation_ongoing == 0 || animation_ongoing == 2 ) {
+            if (animation_ongoing == 0 || animation_ongoing == 2 || animation_ongoing == 4 ) {
                 /* Pozivaju se funkcije za obradu tajmera koji pokreću rotaciju prepreka i rotaciju planete Saturn. */
                 glutTimerFunc(timer_interval, on_timer_barriers, TIMER_VALUE);
                 glutTimerFunc(TIMER_INTERVAL_ROTATION_SPHERE, on_timer_rotation_sphere, TIMER_VALUE_ROTATION_SPHERE_GAME);
@@ -406,7 +483,6 @@ static void on_keyboard(unsigned char key, int x, int y) {
                 animation_ongoing = 1;
             }
             break;
-            
             
             
         /* Karakter se translira levo ili desno ako je animacija u pokretu. */
@@ -468,6 +544,7 @@ static void on_keyboard(unsigned char key, int x, int y) {
                 translation_up = 0;
                 rotation_angle=0;
                 timer_interval=TIMER_INTERVAL_ON_START;
+                life = 3; 
                 
                 /* Animacija se ponovo pokreće */
                 glutTimerFunc(timer_interval, on_timer_barriers, TIMER_VALUE);
@@ -594,6 +671,7 @@ static void generate_barriers(void) {
     /* Generisanje 5 random brojeva i smestanje u pomocni niz. */
     for (i=0; i<5; i++) {
         speedway_position[i] = (rand() % 5)+1;
+        barriers[i].type = (rand() % 3)+1;
     }
 
     /* Sortiranje niza zbog lakseg izbacivanja duplikata i izbegavanja suvisnog iscrtavanja prepreka. */
@@ -622,11 +700,12 @@ static void draw_barriers(void) {
     
     /* Ako je funkcija koja generiše slučajne položaje označila staze iscrtavanja
      * sledi iscrtavanje tih prepreka. (Staze su numerisane brojevima od 1 do 5). */
-       
-    for (i=0; i<5; i++) 
-        if (barriers[i].speedway_position != 0)
-            draw_barrier(barriers[i].speedway_translation);
     
+    for (i=0; i<5; i++) 
+    
+        if (barriers[i].speedway_position != 0)
+            draw_barrier(barriers[i].speedway_translation, barriers[i].type);
+
 }
 
 /* Inicijalizacija položaja zvezda. */
@@ -767,43 +846,24 @@ static void collision_detection(void) {
                 
                 /* Prekidamo skok i animacija prelazi u završno stanje.*/
                 Spaceman_jump = false;
-                animation_ongoing=3;
-            }    
+                end();
+                    
+                }    
         }           
     
     /* Ispisivanje poruke pri završetku animacije. */
-    if (animation_ongoing == 3) {
-        
-        
-            glPushMatrix();
-                glScalef(0.0005,0.0005,0.0005);
-                glLineWidth(5.0);
-                
-                glColor3f(1,1,1);
-                output(100,1200, "GAME OVER      ");
-                glLineWidth(2.5);
-                char result[100];
-                sprintf(result, "Your score is: %d", score/10);
-                output(100, 800, result);
-                output(100, 600, "Press 'R' or 'r' to play again.");
-   
-        
-            glPopMatrix();
-            
-            /* Iscrtava se pravougaonik koji je transparentan. */
-            glPushMatrix();
-                glColor4f(0.2,0.2,0.2,0.3);
-    
-                glTranslatef(0,0,1.7);
-                glBegin(GL_POLYGON);
-                glVertex3f(2, 2, 0);
-                glVertex3f(2, -2, 0);
-                glVertex3f(-2, -2, 0);
-                glVertex3f(-2, 2, 0);
-                glEnd();
-            glPopMatrix();
-        }
 
+
+}
+
+/* Funkcija koja prati stanja zivota igraca. */
+static void end() {
+        if (--life <= 0) {
+            animation_ongoing = 3;
+        } else {
+            animation_ongoing = 4;
+        }
+        glutPostRedisplay();
 }
 
 /* Iscrtavanje početnog menija. */
@@ -1079,6 +1139,19 @@ static void initialize(void)
                  image->width, image->height, 0,
                  GL_RGB, GL_UNSIGNED_BYTE, image->pixels);
 
+
+    image_read(image, FILENAME7);
+
+    glBindTexture(GL_TEXTURE_2D, names[7]);
+    glTexParameteri(GL_TEXTURE_2D,
+                    GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D,
+                    GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB,
+                 image->width, image->height, 0,
+                 GL_RGB, GL_UNSIGNED_BYTE, image->pixels);
     
     /* Iskljucujemo aktivnu teksturu */
     glBindTexture(GL_TEXTURE_2D, 0);
@@ -1086,4 +1159,35 @@ static void initialize(void)
     /* Unistava se objekat za citanje tekstura iz fajla. */
     image_done(image);
 }
+
+void drawTorus(double r, double c, int rSeg , int cSeg , int texture ) {
+    glFrontFace(GL_CW);
+    int i,j,k;
+    const double TAU = 2 * PI;
+
+    for (i = 0; i < rSeg; i++) {
+    glBegin(GL_QUAD_STRIP);
+    for (j = 0; j <= cSeg; j++) {
+      for (k = 0; k <= 1; k++) {
+        double s = (i + k) % rSeg + 0.5;
+        double t = j % (cSeg + 1);
+
+        double x = (c + r * cos(s * TAU / rSeg)) * cos(t * TAU / cSeg);
+        double y = (c + r * cos(s * TAU / rSeg)) * sin(t * TAU / cSeg);
+        double z = r * sin(s * TAU / rSeg);
+
+        double u = (i + k) / (float) rSeg;
+        double v = t / (float) cSeg;
+
+        glTexCoord2d(u, v);
+        glNormal3f(2 * x, 2 * y, 2 * z);
+        glVertex3d(2 * x, 2 * y, 2 * z);
+      }
+    }
+    glEnd();
+  }
+
+  glFrontFace(GL_CCW);
+}
+
 
