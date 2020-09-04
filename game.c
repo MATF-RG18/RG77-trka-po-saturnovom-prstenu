@@ -55,7 +55,7 @@ static void draw_Saturn_ring(void);
 static void draw_Saturn_sphere(void);
 static void draw_Spaceman(void);
 
-static void draw_barrier(float speedway_translation, int type);
+static void draw_barrier(float speedway_translation, int type, int hasDiamond);
 static void draw_barriers(void);
 
 static void draw_stars(void);
@@ -68,6 +68,10 @@ static void draw_meni(void);
 /* Iscrtavanje pozadine i glavnih elemenata igrice. */
 static void draw_background(void);
 static void draw_main_objects(void);
+
+/* Iscrtavanje torusa. */
+static void draw_torus(double r, double c, int rSeg, int cSeg, int texture);
+
 
 /* Funkcije za generisanje inicijalnih vrednosti.*/
 static void generate_barriers(void);
@@ -117,9 +121,9 @@ static void end();
 /* Strukture koje opisuju položaj barijere. */
 typedef struct {
     int type;
-    int texture;
     int speedway_position;
     float speedway_translation;
+    float diamond;
 } Barrier;
 
 /* Strukture koje opisuju položaj zvezda. */
@@ -146,7 +150,6 @@ static int score = 0;
 static int life = 3;
 
 
-void drawTorus(double, double, int, int, int);
 
 
 int main(int argc, char** argv) {
@@ -245,17 +248,21 @@ static void on_display(void) {
                 
                 glScalef(0.7,0.7,0.7);
                 
-                output(200, 1100, "Press 'G' or 'g' to start.");
-                output(200, 900, "Press 'P' or 'p' to pause.");
-                output(200, 600, "To move Spaceman left press 'A' or 'a'.");
-                output(200, 400, "To move Spaceman right press 'D' or 'd'.");
-                output(200, 200, "To make Spaceman jump press space.");
-                output(200, 0,   "To exit game press escape.");
-            
+                
+                
+                output(200, 1000, "Your challenge is to avoid cosmic obstacles and collect");
+                output(200, 800, "as many diamonds as possible. You own 3 lives.");
+                output(200, 400, "Press 'G' or 'g' to start.");
+                output(200, 200, "Press 'P' or 'p' to pause.");
+                output(200, 0, "To move left press 'A' or 'a'.");
+                output(200, -200, "To move right press 'D' or 'd'.");
+                output(200, -400, "To make jump press space.");
+                output(200, -800,   "To exit game press escape.");
+                output(200, -1000,   "The value of the diamond is 100 points.");
             
                 glScalef(1.2,1.2,1.2);
                 glLineWidth(4);
-                output(160, -500,"Have fun :)");
+                output(160, -1200,"Have fun :)");
             
             glPopMatrix();
             break;
@@ -288,12 +295,12 @@ static void on_display(void) {
                 output(2000,1200, result);
 
                 char lifes[15];
-                if (life > 1) {
-                    sprintf(lifes, "You have %d lives! :) ", life);
-                } else {
-                    sprintf(lifes, "Your last chance! :|");
-                }
-                output(1400,1400, lifes);
+                  switch (life) {
+                        case 3:     sprintf(lifes, "LIFE: o o o "); break;
+                        case 2:     sprintf(lifes, "LIFE: o o "); break;
+                        case 1:     sprintf(lifes, "LIFE: o "); break;
+                } 
+                output(2000,1400, lifes);
 
                 glPopMatrix();
             
@@ -399,11 +406,11 @@ static void on_display(void) {
 }
 
 /* Iscrtavanje barijera i transliranje po stazama. */
-static void draw_barrier(float speedway_translation, int type) {
+static void draw_barrier(float speedway_translation, int type, int hasDiamond) {
     glPushMatrix();
     
-    GLUquadric* sphere = gluNewQuadric();
-    gluQuadricTexture(sphere, GL_TRUE);
+    GLUquadric* barrier_type = gluNewQuadric();
+    gluQuadricTexture(barrier_type, GL_TRUE);
         
         /* Rotacija prepreka oko y ose.*/
         glRotatef(-rotation_angle, 0, 1, 0);
@@ -411,17 +418,32 @@ static void draw_barrier(float speedway_translation, int type) {
         /* Postavljanje prepreka na adekvatne staze. */
         glTranslatef(0,0.1/2, -0.8-0.1/2-speedway_translation);
         
+        
+        glPushMatrix();
+        
+        if (hasDiamond) {
+            glColor3f(1,1,0);
+            glTranslatef(0,0.15,0);
+            glRotatef(45,1,0,0);
+            glScalef(0.2,1,1);
+            glutSolidCube(0.04);
+            /*gluSphere(sphere, (GLdouble) 0.03, (GLint) 100, (GLint) 100);*/
+        }
+        glPopMatrix();
+        
+         
         glBindTexture(GL_TEXTURE_2D, names[7]);
         glEnable(GL_TEXTURE_2D);
-
         
         switch (type) {
-            case 1: gluSphere(sphere, (GLdouble) 0.05, (GLint) 100, (GLint) 100); break;
+            case 1: gluSphere(barrier_type, (GLdouble) 0.05, (GLint) 100, (GLint) 100); break;
                         
-            case 2: glRotatef(-rotation_angle*5, 1, 0, 1); drawTorus(0.009,0.02,16,8,0); break;
-            case 3: glRotatef(-rotation_angle*2, 1, 1, 1); gluCylinder(sphere, (GLdouble) 0.06, (GLdouble) 0.02, (GLdouble) 0.07, (GLint) 100, (GLint) 100); break;
+            case 2: glRotatef(-rotation_angle*5, 1, 0, 1); draw_torus(0.009,0.02,16,8,0); break;
+            case 3: glRotatef(-rotation_angle*2, 1, 1, 1); gluCylinder(barrier_type, (GLdouble) 0.06, (GLdouble) 0.02, (GLdouble) 0.07, (GLint) 100, (GLint) 100); break;
         }
         
+        
+   
         glBindTexture(GL_TEXTURE_2D, 0);
         glDisable(GL_TEXTURE_2D);
 
@@ -626,32 +648,67 @@ static void draw_Saturn_sphere(void) {
 
 /* Iscrtavanje glavnog karaktera. */
 static void draw_Spaceman(void) {
- 
+    
     /* Iscrtava se telo glavnog karaktera. */
     glPushMatrix();
+        
         glColor3f(0.1,0.5,0.4);
+        glScalef(1,0.6,1);
+        glTranslatef(0,0.4,0);
         glutSolidSphere(0.6, 50, 50);
     glPopMatrix();
 
     /* Iscrtavaju se uši. */
     glPushMatrix();
     /* Podešava se boja ušiju koja će konstantno da se menja, davajući iluziju svetlucanja. */
-    glColor3f((float)rand()/RAND_MAX,(float)rand()/RAND_MAX,(float)rand()/RAND_MAX);
+  
+    glTranslatef(-0.25,0.4,0);
+
+    glPushMatrix();
+      glColor3f((float)rand()/RAND_MAX,(float)rand()/RAND_MAX,(float)rand()/RAND_MAX);
    
-        glTranslatef(-0.25,0.4,0);
         glPushMatrix();
             glRotatef(30,0,0,1);
             glRotatef(-90,1,0,0);
             glutSolidCone(0.25, 0.4, 50, 50);
-            glPopMatrix();
+        glPopMatrix();
     
-            glPushMatrix();
+        glPushMatrix();
                 glTranslatef(0.5,0,0);
                 glRotatef(-30,0,0,1);
                 glRotatef(-90,1,0,0);
                 glutSolidCone(0.25, 0.4, 50, 50);
-            glPopMatrix();
         glPopMatrix();
+      glPopMatrix();  
+        
+      
+        glColor3f(0.1,0.5,0.4);
+        glTranslatef(0,-0.4,0);
+        glPushMatrix();
+            glRotatef(90,1,0,0);
+            glutSolidCone(0.1, 0.4, 50, 50);
+        glPopMatrix();
+    
+                glPushMatrix();
+                glTranslatef(0.2,0,0);
+                glRotatef(90,1,0,0);
+                glutSolidCone(0.1, 0.4, 50, 50);
+        glPopMatrix();
+        
+        
+        glPushMatrix();
+                glTranslatef(0.4,0,0);
+                glRotatef(90,1,0,0);
+                glutSolidCone(0.1, 0.4, 50, 50);
+        glPopMatrix();
+        
+        
+           glPushMatrix();
+                glTranslatef(0.6,0,0);
+                glRotatef(90,1,0,0);
+                glutSolidCone(0.1, 0.4, 50, 50);
+        glPopMatrix();
+        
     glPopMatrix();
     
 }
@@ -667,6 +724,8 @@ static void generate_barriers(void) {
     /* Srand će omogućiti da pri svakom generisanju položaja prepreka
      * one budu u drugom položaju.*/
     srand(time(NULL));
+    
+    int diamond = (rand() % 5)+1;
     
     /* Generisanje 5 random brojeva i smestanje u pomocni niz. */
     for (i=0; i<5; i++) {
@@ -692,6 +751,9 @@ static void generate_barriers(void) {
      * bez bilo kakve provere neće imati duplikata. */
     barriers[4].speedway_position=speedway_position[4];
     barriers[4].speedway_translation=(speedway_position[4]-1)/10.0;
+    
+    
+    barriers[diamond].diamond = 1;
 }
 
 /* Iscrtavanje prepreka. */
@@ -703,8 +765,9 @@ static void draw_barriers(void) {
     
     for (i=0; i<5; i++) 
     
-        if (barriers[i].speedway_position != 0)
-            draw_barrier(barriers[i].speedway_translation, barriers[i].type);
+        if (barriers[i].speedway_position != 0) {
+            draw_barrier(barriers[i].speedway_translation, barriers[i].type, barriers[i].diamond);
+        }
 
 }
 
@@ -849,10 +912,15 @@ static void collision_detection(void) {
                 end();
                     
                 }    
+                
+            /* Ukoliko na mestu na kom se nalazi Spaceman postoji dijamant i ukoliko ga pokupi score se poveca za 100. */    
+            if (rotation_angle>=(116-danger_zone_parametar) && rotation_angle<(116-danger_zone_parametar+6)
+                && barriers[i].speedway_position==Spaceman_position && translation_up>=0.12 && barriers[i].diamond == 1) {
+                score=score+1000;
+                barriers[i].diamond = 0;
+                glutPostRedisplay();
+            }
         }           
-    
-    /* Ispisivanje poruke pri završetku animacije. */
-
 
 }
 
@@ -1013,7 +1081,7 @@ static void draw_Uran() {
         gluQuadricTexture(sphere, GL_TRUE);
         
         
-        glTranslatef(2,1.1,-3);
+        glTranslatef(2,1.1,-4);
         glRotatef(90,1,0,0);
         gluSphere(sphere, (GLdouble) 0.1, (GLint) 100, (GLint) 100);        
 
@@ -1160,7 +1228,7 @@ static void initialize(void)
     image_done(image);
 }
 
-void drawTorus(double r, double c, int rSeg , int cSeg , int texture ) {
+static void draw_torus(double r, double c, int rSeg, int cSeg, int texture){
     glFrontFace(GL_CW);
     int i,j,k;
     const double TAU = 2 * PI;
